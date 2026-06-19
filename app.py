@@ -325,20 +325,20 @@ class PatternPanel(QGroupBox):
         grid.setVerticalSpacing(16)
         grid.setContentsMargins(0, 4, 0, 4)
         specs = [
-            ("level1", "Level 1", 0.0, 8.0, 0.1),
-            ("level2", "Level 2", 0.0, 8.0, 0.1),
-            ("invert1", "Invert 1", -1.0, 1.0, 0.1),
-            ("invert2", "Invert 2", -1.0, 1.0, 0.1),
+            ("level1", "Lvl 1", "Level 1", 0.0, 8.0, 0.1),
+            ("level2", "Lvl 2", "Level 2", 0.0, 8.0, 0.1),
+            ("invert1", "Inv. 1", "Invert 1", -1.0, 1.0, 0.1),
+            ("invert2", "Inv. 2", "Invert 2", -1.0, 1.0, 0.1),
         ]
-        for i, (attr, lbl, lo, hi, step) in enumerate(specs):
+        for i, (attr, lbl, full, lo, hi, step) in enumerate(specs):
             sb = QDoubleSpinBox()
             sb.setRange(lo, hi)
             sb.setSingleStep(step)
             sb.setDecimals(2)
             sb.setFixedHeight(28)
-            sb.setMinimumWidth(54)
+            sb.setMinimumWidth(90)
             sb.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            sb.setToolTip(f"{lbl} - edits update the preview live")
+            sb.setToolTip(f"{full} - edits update the preview live")
             sb.valueChanged.connect(self._control_edited)
             self.ctrl_spins[attr] = sb
             lab = QLabel(lbl)
@@ -348,8 +348,8 @@ class PatternPanel(QGroupBox):
             grid.addWidget(lab, r, c)
             grid.addWidget(sb, r, c + 1)
         # labels hug a fixed-width column; the two spin columns share the rest equally
-        grid.setColumnMinimumWidth(0, 46)
-        grid.setColumnMinimumWidth(2, 46)
+        grid.setColumnMinimumWidth(0, 36)
+        grid.setColumnMinimumWidth(2, 36)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(3, 1)
         root.addLayout(grid)
@@ -876,6 +876,12 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Banshee Brush  -  AFoP Skin Recolour")
         self.resize(1180, 760)
+        # never open larger than the screen, or the right panel runs off-screen
+        # (small displays / VMs). Stays freely resizable afterwards.
+        _scr = QApplication.primaryScreen()
+        if _scr is not None:
+            _av = _scr.availableGeometry()
+            self.resize(min(1180, _av.width() - 40), min(760, _av.height() - 80))
         self.setAcceptDrops(True)
         from viewer import BansheeViewer
         from app_icon import app_icon
@@ -894,7 +900,6 @@ class MainWindow(QMainWindow):
         self._pset_data = None  # the loaded BansheePatternData (for in-place overwrite)
 
         controls = QWidget()
-        controls.setMaximumWidth(640)
         col = QVBoxLayout(controls)
         col.setContentsMargins(8, 8, 8, 8)
         col.setSpacing(8)
@@ -1054,11 +1059,26 @@ class MainWindow(QMainWindow):
         rcol.addWidget(legend)
         rcol.addWidget(self.viewer, 1)
 
+        # wrap the controls column so it scrolls vertically when the window is short.
+        # fix its width to the FULL content width plus the vertical scrollbar, so every
+        # field is visible horizontally and the (space-reserving) bar never overlaps it.
+        controls_scroll = QScrollArea()
+        controls_scroll.setWidget(controls)
+        controls_scroll.setWidgetResizable(True)
+        controls_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        controls_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        controls_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        _sbw = controls_scroll.verticalScrollBar().sizeHint().width() or 16
+        _cw = max(controls.sizeHint().width(), controls.minimumSizeHint().width())
+        controls_scroll.setFixedWidth(_cw + _sbw + 4)
+
         split = QSplitter()
-        split.addWidget(controls)
+        split.addWidget(controls_scroll)
         split.addWidget(right)
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)
+        split.setCollapsible(0, False)      # the left column is never collapsed / cut off
+        split.setCollapsible(1, True)       # the right panel may shrink / collapse
         split.setSizes([600, 560])
         self.setCentralWidget(split)
 
