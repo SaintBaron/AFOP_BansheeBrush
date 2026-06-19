@@ -1,5 +1,5 @@
 # Banshee Brush
-<img width="400" height="400" alt="image" src="https://github.com/user-attachments/assets/20f75918-695b-4b43-9d89-0799ce6c3215" />
+<img width="200" height="200" alt="image" src="https://github.com/user-attachments/assets/20f75918-695b-4b43-9d89-0799ce6c3215" />
 
 A desktop recolour editor and live OpenGL preview for **Avatar: Frontiers of Pandora** banshee (Ikran) skins. Load the game's vanity pattern files, repaint the ten colour slots for the head and body, preview the result on the actual model in real time, and export skins the game will accept.
 
