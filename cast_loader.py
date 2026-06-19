@@ -4,7 +4,6 @@ Bundles DTZxPorter's Cast binary parser, the SubMesh/bounds helpers shared with 
 the .cast extractor, and the load_model dispatcher (.cast -> load_cast, .mmb ->
 mmb_loader.load_model). Both return (list[SubMesh], material_dict).
 """
-
 from __future__ import annotations
 import struct
 import itertools
@@ -34,7 +33,7 @@ def castTypeForMaximum(values):
 
 
 class CastString_t(object):
-    __slots__ = "value"
+    __slots__ = ("value")
 
     def __init__(self, file=None):
         self.value = ""
@@ -43,16 +42,16 @@ class CastString_t(object):
             self.load(file)
 
     def load(self, file):
-        bytes = b""
+        bytes = b''
         b = file.read(1)
-        while not b == b"\x00":
+        while not b == b'\x00':
             bytes += b
             b = file.read(1)
         self.value = bytes.decode("utf-8")
 
     def save(self, file):
         file.write(self.value.encode("utf-8"))
-        file.write(b"\x00")
+        file.write(b'\x00')
 
 
 class CastProperty_t(object):
@@ -60,16 +59,16 @@ class CastProperty_t(object):
 
     def __init__(self, identifier=None):
         switcher = {
-            "b": [1, "B", 1],
-            "h": [2, "H", 1],
-            "i": [4, "I", 1],
-            "l": [8, "Q", 1],
-            "f": [4, "f", 1],
-            "d": [8, "d", 1],
-            "s": [0, "s", 1],
-            "2v": [8, "2f", 2],
-            "3v": [12, "3f", 3],
-            "4v": [16, "4f", 4],
+            'b': [1, "B", 1],
+            'h': [2, "H", 1],
+            'i': [4, "I", 1],
+            'l': [8, "Q", 1],
+            'f': [4, "f", 1],
+            'd': [8, "d", 1],
+            's': [0, "s", 1],
+            '2v': [8, "2f", 2],
+            '3v': [12, "3f", 3],
+            '4v': [16, "4f", 4]
         }
 
         if identifier is None:
@@ -107,22 +106,12 @@ class CastColor:
     @staticmethod
     def toLinearFromSRGB(color):
         """Converts a srgb rgba color (float) to a linear rgba (float) color."""
-        return (
-            CastColor.sRGBToLinear(color[0]),
-            CastColor.sRGBToLinear(color[1]),
-            CastColor.sRGBToLinear(color[2]),
-            color[3],
-        )
+        return (CastColor.sRGBToLinear(color[0]), CastColor.sRGBToLinear(color[1]), CastColor.sRGBToLinear(color[2]), color[3])
 
     @staticmethod
     def toSRGBFromLinear(color):
         """Converts a linear rgba color (float) to a srgb rgba (float) color."""
-        return (
-            CastColor.linearToSRGB(color[0]),
-            CastColor.linearToSRGB(color[1]),
-            CastColor.linearToSRGB(color[2]),
-            color[3],
-        )
+        return (CastColor.linearToSRGB(color[0]), CastColor.linearToSRGB(color[1]), CastColor.linearToSRGB(color[2]), color[3])
 
     @staticmethod
     def fromInteger(color):
@@ -159,29 +148,26 @@ class CastProperty(object):
         """Loads a cast property from the given file."""
         header = struct.unpack("2sHI", file.read(0x8))
 
-        self.name = struct.unpack(("%ds" % header[1]), file.read(header[1]))[0].decode(
-            "utf-8"
-        )
-        self.type = CastProperty_t(header[0].decode("utf-8").strip("\0"))
+        self.name = struct.unpack(("%ds" % header[1]),
+                                  file.read(header[1]))[0].decode("utf-8")
+        self.type = CastProperty_t(header[0].decode("utf-8").strip('\0'))
 
-        if self.type.size == 0 and self.type.fmt == "s":
+        if (self.type.size == 0 and self.type.fmt == "s"):
             self.values = [CastString_t(file).value]
         else:
             self.values = [None] * header[2]
-            self.values = struct.unpack(
-                self.type.fmt * header[2], file.read(self.type.size * header[2])
-            )
+            self.values = struct.unpack(self.type.fmt * header[2],
+                                        file.read(self.type.size * header[2]))
 
     def save(self, file):
         """Saves this cast property to the given file."""
         identifier = self.type.identifier.encode("utf-8")
         name = self.name.encode("utf-8")
 
-        file.write(
-            struct.pack(
-                "2sHI", identifier, len(name), int(len(self.values) / self.type.array)
-            )
-        )
+        file.write(struct.pack("2sHI",
+                               identifier,
+                               len(name),
+                               int(len(self.values) / self.type.array)))
         file.write(name)
 
         if self.type.size == 0 and self.type.fmt == "s":
@@ -190,12 +176,8 @@ class CastProperty(object):
 
             string.save(file)
         else:
-            file.write(
-                struct.pack(
-                    self.type.fmt * int(len(self.values) / self.type.array),
-                    *self.values,
-                )
-            )
+            file.write(struct.pack(self.type.fmt *
+                                   int(len(self.values) / self.type.array), *self.values))
 
     def length(self):
         """Returns the length in bytes of this cast property."""
@@ -218,7 +200,8 @@ class CastProperty(object):
 class CastNode(object):
     """A single generic cast node."""
 
-    __slots__ = ("identifier", "hash", "parentNode", "childNodes", "properties")
+    __slots__ = ("identifier", "hash", "parentNode",
+                 "childNodes", "properties")
 
     def __init__(self, identifier=0):
         self.childNodes = []
@@ -286,16 +269,12 @@ class CastNode(object):
 
     def save(self, file):
         """Saves this cast node to the given file."""
-        file.write(
-            struct.pack(
-                "IIQII",
-                self.identifier,
-                self.length(),
-                self.hash,
-                len(self.properties),
-                len(self.childNodes),
-            )
-        )
+        file.write(struct.pack("IIQII",
+                               self.identifier,
+                               self.length(),
+                               self.hash,
+                               len(self.properties),
+                               len(self.childNodes)))
 
         for property in self.properties.values():
             property.save(file)
@@ -517,7 +496,8 @@ class Curve(CastNode):
 
     def SetKeyFrameBuffer(self, values):
         """Sets the collection of keyframes."""
-        self.CreateProperty("kb", castTypeForMaximum(values)).values = list(values)
+        self.CreateProperty("kb",
+                            castTypeForMaximum(values)).values = list(values)
 
     def KeyValueBuffer(self):
         """The collection of keyframe values."""
@@ -532,9 +512,8 @@ class Curve(CastNode):
 
     def SetVec4KeyValueBuffer(self, values):
         """Sets the collection of keyframe values as a collection of vec4s."""
-        self.CreateProperty("kv", "4v").values = list(
-            itertools.chain.from_iterable(values)
-        )
+        self.CreateProperty("kv", "4v").values = \
+            list(itertools.chain.from_iterable(values))
 
     def SetByteKeyValueBuffer(self, values):
         """Sets the collection of keyframe values as a collection of bytes."""
@@ -660,7 +639,8 @@ class NotificationTrack(CastNode):
 
     def SetKeyFrameBuffer(self, values):
         """Sets the collection of keyframes this notification fires on."""
-        self.CreateProperty("kb", castTypeForMaximum(values)).values = list(values)
+        self.CreateProperty("kb",
+                            castTypeForMaximum(values)).values = list(values)
 
 
 class Mesh(CastNode):
@@ -751,7 +731,8 @@ class Mesh(CastNode):
 
     def SetFaceBuffer(self, values):
         """Sets the collection of faces for this mesh."""
-        self.CreateProperty("f", castTypeForMaximum(values)).values = list(values)
+        self.CreateProperty("f",
+                            castTypeForMaximum(values)).values = list(values)
 
     def VertexPositionBuffer(self):
         """The collection of vertex positions for this mesh."""
@@ -762,9 +743,8 @@ class Mesh(CastNode):
 
     def SetVertexPositionBuffer(self, values):
         """Sets the collection of vertex positions for this mesh."""
-        self.CreateProperty("vp", "3v").values = list(
-            itertools.chain.from_iterable(values)
-        )
+        self.CreateProperty("vp", "3v").values = \
+            list(itertools.chain.from_iterable(values))
 
     def VertexNormalBuffer(self):
         """The collection of vertex normals for this mesh."""
@@ -775,9 +755,8 @@ class Mesh(CastNode):
 
     def SetVertexNormalBuffer(self, values):
         """Sets the collection of vertex normals for this mesh."""
-        self.CreateProperty("vn", "3v").values = list(
-            itertools.chain.from_iterable(values)
-        )
+        self.CreateProperty("vn", "3v").values = \
+            list(itertools.chain.from_iterable(values))
 
     def VertexTangentBuffer(self):
         """The collection of vertex tangents for this mesh."""
@@ -788,9 +767,8 @@ class Mesh(CastNode):
 
     def SetVertexTangentBuffer(self, values):
         """Sets the collection of vertex tangents for this mesh."""
-        self.CreateProperty("vt", "3v").values = list(
-            itertools.chain.from_iterable(values)
-        )
+        self.CreateProperty("vt", "3v").values = \
+            list(itertools.chain.from_iterable(values))
 
     def VertexColorLayerBuffer(self, index):
         """The vertex color layer collection for the given layer index."""
@@ -811,9 +789,8 @@ class Mesh(CastNode):
         if values and isinstance(values[0], int):
             self.CreateProperty("c%d" % index, "i").values = list(values)
         else:
-            self.CreateProperty("c%d" % index, "4v").values = list(
-                itertools.chain.from_iterable(values)
-            )
+            self.CreateProperty("c%d" % index, "4v").values = \
+                list(itertools.chain.from_iterable(values))
 
     def VertexColorLayerBufferPacked(self, index):
         """Whether or not the vertex color layer is in packed integer format (CastColor) or floating point format."""
@@ -834,9 +811,8 @@ class Mesh(CastNode):
 
     def SetVertexUVLayerBuffer(self, index, values):
         """Sets the uv layer collection for the given layer index."""
-        self.CreateProperty("u%d" % index, "2v").values = list(
-            itertools.chain.from_iterable(values)
-        )
+        self.CreateProperty("u%d" % index, "2v").values = \
+            list(itertools.chain.from_iterable(values))
 
     def VertexWeightBoneBuffer(self):
         """Gets the vertex weight bone index buffer."""
@@ -847,7 +823,8 @@ class Mesh(CastNode):
 
     def SetVertexWeightBoneBuffer(self, values):
         """Sets the vertex weight bone index buffer."""
-        self.CreateProperty("wb", castTypeForMaximum(values)).values = list(values)
+        self.CreateProperty("wb",
+                            castTypeForMaximum(values)).values = list(values)
 
     def VertexWeightValueBuffer(self):
         """Gets the vertex weight value buffer."""
@@ -904,7 +881,8 @@ class Hair(CastNode):
 
     def SetSegmentBuffer(self, values):
         """Sets the number of segments for each strand in this hair."""
-        self.CreateProperty("se", castTypeForMaximum(values)).values = list(values)
+        self.CreateProperty("se",
+                            castTypeForMaximum(values)).values = list(values)
 
     def ParticleBuffer(self):
         """The collection of particles for this hair."""
@@ -915,9 +893,8 @@ class Hair(CastNode):
 
     def SetParticleBuffer(self, values):
         """Sets the collection of particles for this hair."""
-        self.CreateProperty("pt", "3v").values = list(
-            itertools.chain.from_iterable(values)
-        )
+        self.CreateProperty("pt", "3v").values = \
+            list(itertools.chain.from_iterable(values))
 
     def Material(self):
         """Gets the material used for this hair."""
@@ -968,7 +945,8 @@ class BlendShape(CastNode):
 
     def SetTargetShapeVertexIndices(self, indices):
         """Sets a collection of target shape vertex indices."""
-        self.CreateProperty("vi", castTypeForMaximum(indices)).values = list(indices)
+        self.CreateProperty("vi",
+                            castTypeForMaximum(indices)).values = list(indices)
 
     def TargetShapeVertexPositions(self):
         """A collection of target shape vertex positions."""
@@ -979,9 +957,8 @@ class BlendShape(CastNode):
 
     def SetTargetShapeVertexPositions(self, positions):
         """Sets a collection of target shape vertex positions."""
-        self.CreateProperty("vp", "3v").values = list(
-            itertools.chain.from_iterable(positions)
-        )
+        self.CreateProperty("vp", "3v").values = \
+            list(itertools.chain.from_iterable(positions))
 
     def TargetWeightScale(self):
         """The target shape scale value."""
@@ -1050,7 +1027,7 @@ class Bone(CastNode):
             # Since cast uses unsigned types, we must
             # convert to a signed integer, as the range is -1 - INT32_MAX
             parentUnsigned = parent.values[0]
-            parentUnsigned = parentUnsigned & 0xFFFFFFFF
+            parentUnsigned = parentUnsigned & 0xffffffff
             return (parentUnsigned ^ 0x80000000) - 0x80000000
         return -1
 
@@ -1627,8 +1604,7 @@ typeSwitcher = {
 
 class Cast(object):
     """A cast file that holds a collection of cast nodes."""
-
-    __slots__ = "rootNodes"
+    __slots__ = ("rootNodes")
 
     def __init__(self):
         self.rootNodes = []
@@ -1670,7 +1646,11 @@ class Cast(object):
         except IOError:
             raise Exception("Could not create file for writing: %s\n" % path)
 
-        file.write(struct.pack("IIII", 0x74736163, 0x1, len(self.rootNodes), 0))
+        file.write(struct.pack("IIII",
+                               0x74736163,
+                               0x1,
+                               len(self.rootNodes),
+                               0))
 
         for rootNode in self.rootNodes:
             rootNode.save(file)
@@ -1681,30 +1661,21 @@ class Cast(object):
 # (formerly cast_loader.py and model_loader.py). SubMesh / model_bounds are
 # shared with mmb_loader.
 
-
 def _four(i):
     return struct.pack("<I", i).decode("latin1")
 
 
 class SubMesh:
-    __slots__ = (
-        "name",
-        "positions",
-        "normals",
-        "uv0",
-        "uv1",
-        "indices",
-        "material_hash",
-    )
+    __slots__ = ("name", "positions", "normals", "uv0", "uv1", "indices", "material_hash")
 
     def __init__(self, name, positions, normals, uv0, indices, material_hash, uv1=None):
         self.name = name
-        self.positions = positions  # (N,3) float32
-        self.normals = normals  # (N,3) float32
-        self.uv0 = uv0  # (N,2) float32  - skin / pattern coat UV
+        self.positions = positions      # (N,3) float32
+        self.normals = normals          # (N,3) float32
+        self.uv0 = uv0                  # (N,2) float32  - skin / pattern coat UV
         # uv1: second UV set; falls back to a copy of uv0 when only one channel exists.
         self.uv1 = uv1 if uv1 is not None else np.array(uv0, np.float32)
-        self.indices = indices  # (M,)  uint32 flat triangle list
+        self.indices = indices          # (M,)  uint32 flat triangle list
         self.material_hash = material_hash
 
 
@@ -1737,15 +1708,13 @@ def load_cast(path):
             continue
         pos = np.asarray(vp, np.float32).reshape(-1, 3)
         vn = ch.VertexNormalBuffer()
-        nrm = np.asarray(vn, np.float32).reshape(-1, 3) if vn else np.zeros_like(pos)
+        nrm = (np.asarray(vn, np.float32).reshape(-1, 3) if vn
+               else np.zeros_like(pos))
         u0p = ch.properties.get("u0")
-        uv0 = (
-            np.asarray(u0p.values, np.float32).reshape(-1, 2)
-            if u0p
-            else np.zeros((len(pos), 2), np.float32)
-        )
+        uv0 = (np.asarray(u0p.values, np.float32).reshape(-1, 2) if u0p
+               else np.zeros((len(pos), 2), np.float32))
         u1p = ch.properties.get("u1")
-        uv1 = np.asarray(u1p.values, np.float32).reshape(-1, 2) if u1p else None
+        uv1 = (np.asarray(u1p.values, np.float32).reshape(-1, 2) if u1p else None)
         idx = np.asarray(ch.FaceBuffer(), np.uint32)
         m = ch.properties.get("m")
         mh = m.values[0] if m else None
@@ -1764,15 +1733,16 @@ def model_bounds(meshes):
 
 
 def load_model(path):
-    """Load a preview model by extension: .cast here, .mmb via mmb_loader.
-    Returns (list[SubMesh], material_dict)."""
+    """Load a preview model by extension: .cast here, .mmb via mmb_loader,
+    .fbx via fbx_loader. Returns (list[SubMesh], material_dict)."""
     import os
-
     ext = os.path.splitext(path)[1].lower()
     if ext == ".cast":
         return load_cast(path)
     if ext == ".mmb":
         import mmb_loader
-
         return mmb_loader.load_model(path)
-    raise ValueError(f"unsupported model format: {ext} (use .mmb or .cast)")
+    if ext == ".fbx":
+        import fbx_loader
+        return fbx_loader.load_model(path)
+    raise ValueError(f"unsupported model format: {ext} (use .mmb, .cast or .fbx)")

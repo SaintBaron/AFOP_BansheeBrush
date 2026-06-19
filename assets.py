@@ -146,9 +146,23 @@ def classify(fname):
 
 
 def _rank(slot, path):
-    """Sort key for candidate files (lower preferred): default variant first, .dds over .png / .mmb over .cast, corpse/lod/ragdoll last."""
+    """Sort key for candidate files (lower preferred). For the model slot the render
+    mesh (wl_banshee_*) is preferred over wildlife_banshee_* skeleton/animation files;
+    for texture slots the default variant (wildlife_banshee_01) wins. .dds over .png,
+    .mmb over .cast, and animation/pose/corpse/lod variants last."""
     stem = os.path.splitext(os.path.basename(path).lower())[0]
-    if DEFAULT_VARIANT in stem:
+    if slot == "model":
+        # the actual render mesh is named wl_banshee_*; wildlife_banshee_* .mmb files
+        # are skeleton/animation, so prefer the wl_ mesh (wl_banshee_01 first).
+        if "wl_" + CREATURE + "_01" in stem:
+            var = 0
+        elif "wl_" + CREATURE in stem:
+            var = 1
+        elif CREATURE in stem:
+            var = 2
+        else:
+            var = 3
+    elif DEFAULT_VARIANT in stem:
         var = 0
     elif CREATURE + "_01" in stem or "_" + CREATURE + "_01" in stem or "banshee_01" in stem:
         var = 1
@@ -156,8 +170,9 @@ def _rank(slot, path):
         var = 2
     else:
         var = 3                                  # shared (insect_wing, wildlife_eye_grayscale)
-    if any(b in stem for b in ("corpse", "lastlod", "_lod", "crashed", "ragdoll", "death")):
-        var += 5
+    if any(b in stem for b in ("corpse", "lastlod", "_lod", "crashed", "ragdoll", "death",
+                               "idle", "_walk", "_run", "_fly", "_glide", "_attack", "_pose")):
+        var += 5                                 # animation/pose/damaged variant, not the base mesh                                 # animation/pose/damaged variant, not the base mesh
     pl = path.lower()
     if slot == "model":
         typ = 0 if pl.endswith(".mmb") else 1

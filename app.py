@@ -10,7 +10,7 @@ import sys
 import os
 import numpy as np
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QObject, QRunnable, QThreadPool, pyqtSignal
 from PyQt6.QtGui import QColor, QSurfaceFormat
 from PyQt6.QtWidgets import (
     QApplication,
@@ -141,10 +141,23 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width:0; }
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background:transparent; }
 """
 
-try:
-    from PIL import Image
-except Exception:
-    Image = None
+Image = None
+_pil_tried = False
+
+
+def _pil():
+    """Import Pillow lazily, so its ~45 ms import stays off the cold-launch path
+    (texture decoding runs on worker threads; the main thread only needs Pillow
+    when exporting or loading a non-.dds image)."""
+    global Image, _pil_tried
+    if not _pil_tried:
+        _pil_tried = True
+        try:
+            from PIL import Image as _Im
+            Image = _Im
+        except Exception:
+            Image = None
+    return Image
 
 
 def load_rgba(path):
@@ -153,9 +166,30 @@ def load_rgba(path):
         import stf_dds
 
         return stf_dds.load_dds(path)
-    if Image is None:
+    if _pil() is None:
         raise RuntimeError("Pillow is required to load textures")
     return np.asarray(Image.open(path).convert("RGBA"))
+
+
+class _TexDecodeSignals(QObject):
+    """Carries a finished texture decode back to the GUI thread."""
+    done = pyqtSignal(str, str, int, object)      # key, role, generation, rgba|None
+
+
+class _TexDecodeTask(QRunnable):
+    """Decode one texture off the GUI thread (CPU/Pillow only - no OpenGL)."""
+
+    def __init__(self, key, role, path, gen, signals):
+        super().__init__()
+        self._key, self._role, self._path = key, role, path
+        self._gen, self._signals = gen, signals
+
+    def run(self):
+        try:
+            arr = np.ascontiguousarray(load_rgba(self._path))
+        except Exception:
+            arr = None
+        self._signals.done.emit(self._key, self._role, self._gen, arr)
 
 
 def _swatch_css(rrggbb):
@@ -325,12 +359,20 @@ class PatternPanel(QGroupBox):
         grid.setVerticalSpacing(16)
         grid.setContentsMargins(0, 4, 0, 4)
         specs = [
-            ("level1", "Lvl 1", "Level 1", 0.0, 8.0, 0.1),
-            ("level2", "Lvl 2", "Level 2", 0.0, 8.0, 0.1),
-            ("invert1", "Inv. 1", "Invert 1", -1.0, 1.0, 0.1),
-            ("invert2", "Inv. 2", "Invert 2", -1.0, 1.0, 0.1),
+            ("level1", "Lvl 1", "Level 1", 0.0, 8.0, 0.1,
+             "Coverage threshold for Coat 1 (colours 1-5). Slides the cutoff on the "
+             "pattern coat's red channel - sets how much of the surface Coat 1 covers."),
+            ("level2", "Lvl 2", "Level 2", 0.0, 8.0, 0.1,
+             "Coverage threshold for Coat 2 (colours 6-10). Slides the cutoff on the "
+             "pattern coat's green channel - sets how much of the surface Coat 2 covers."),
+            ("invert1", "Inv. 1", "Invert 1", -1.0, 1.0, 0.1,
+             "Placement of Coat 1: +1 normal, 0 hides it, -1 inverts it (Coat 1 shows "
+             "where it previously didn't). In-between values scale the effect."),
+            ("invert2", "Inv. 2", "Invert 2", -1.0, 1.0, 0.1,
+             "Placement of Coat 2: +1 normal, 0 hides it, -1 inverts it. In-between "
+             "values scale the effect."),
         ]
-        for i, (attr, lbl, full, lo, hi, step) in enumerate(specs):
+        for i, (attr, lbl, full, lo, hi, step, tip) in enumerate(specs):
             sb = QDoubleSpinBox()
             sb.setRange(lo, hi)
             sb.setSingleStep(step)
@@ -338,10 +380,13 @@ class PatternPanel(QGroupBox):
             sb.setFixedHeight(28)
             sb.setMinimumWidth(90)
             sb.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            sb.setToolTip(f"{full} - edits update the preview live")
+            tooltip = (f"<qt><b>{full}</b><br>{tip}"
+                       f"<br><i>Edits update the preview live.</i></qt>")
+            sb.setToolTip(tooltip)
             sb.valueChanged.connect(self._control_edited)
             self.ctrl_spins[attr] = sb
             lab = QLabel(lbl)
+            lab.setToolTip(tooltip)        # hovering the label shows the same hint
             lab.setFixedHeight(28)  # match the spin box so vertical centring lines up
             lab.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             r, c = i // 2, (i % 2) * 2
@@ -595,6 +640,7 @@ class PatternPanel(QGroupBox):
             )
             return
         try:
+            _pil()                       # Pillow is needed for the resize/save below
             col = load_rgba(paths["color"])
             h, w = col.shape[:2]
 
@@ -874,6 +920,14 @@ class SetupDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        # background texture decoding: CPU/Pillow work runs on a thread pool and the
+        # finished RGBA array is marshalled back here for the GL upload. OpenGL stays
+        # on the main thread (the context has thread affinity).
+        self._pool = QThreadPool.globalInstance()
+        self._tex_signals = _TexDecodeSignals(self)
+        self._tex_signals.done.connect(self._on_texture_decoded)
+        self._tex_gen = 0
+        self._tex_latest = {}          # (key, role) -> newest generation requested
         self.setWindowTitle("Banshee Brush  -  AFoP Skin Recolour")
         self.resize(1180, 760)
         # never open larger than the screen, or the right panel runs off-screen
@@ -1034,14 +1088,14 @@ class MainWindow(QMainWindow):
         mlbl.setObjectName("subtitle")
         self.model_path_edit = QLineEdit()
         self.model_path_edit.setFixedHeight(30)
-        self.model_path_edit.setPlaceholderText("path to a .mmb / .cast model")
+        self.model_path_edit.setPlaceholderText("path to a .mmb / .cast / .fbx model")
         self.model_path_edit.setToolTip(
             "Path to the displayed model - type a path and press Enter to load"
         )
         self.model_path_edit.returnPressed.connect(self._model_path_entered)
         browse = QPushButton("Browse...")
         browse.setFixedHeight(30)
-        browse.setToolTip("Browse for a model file (.mmb / .cast)")
+        browse.setToolTip("Browse for a model file (.mmb / .cast / .fbx)")
         browse.clicked.connect(self._browse_model)
         manage = QPushButton("Assets...")
         manage.setFixedHeight(30)
@@ -1134,7 +1188,7 @@ class MainWindow(QMainWindow):
             if not p or not os.path.isfile(p):
                 continue
             try:
-                self.viewer.set_texture(key, role, load_rgba(p))
+                self._load_texture_async(key, role, p)
                 found.append(f"{key}/{role}")
             except Exception:
                 failed.append(f"{key}/{role}")
@@ -1206,12 +1260,27 @@ class MainWindow(QMainWindow):
         )
 
     # ---------------- model selection ----------------
+    def _load_texture_async(self, key, role, path):
+        """Queue a texture decode off-thread; the GL upload runs on the main thread
+        once it finishes, and results superseded by a newer request are dropped."""
+        self._tex_gen += 1
+        self._tex_latest[(key, role)] = self._tex_gen
+        self._pool.start(_TexDecodeTask(key, role, path, self._tex_gen, self._tex_signals))
+
+    def _on_texture_decoded(self, key, role, gen, arr):
+        if self._tex_latest.get((key, role)) != gen:
+            return                     # a newer request for this slot superseded it
+        if arr is None:
+            self.statusBar().showMessage(f"Could not decode {key} {role} texture", 5000)
+            return
+        self.viewer.set_texture(key, role, arr)
+
     def _browse_model(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open model",
             self._assets_dir(),
-            "Model (*.mmb *.cast);;MMB (*.mmb);;Cast (*.cast)",
+            "Model (*.mmb *.cast *.fbx);;MMB (*.mmb);;Cast (*.cast);;FBX (*.fbx)",
         )
         if path:
             self._activate_model(path)
@@ -1253,9 +1322,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Not found", f"No file at:\n{path}")
             return None
         try:
-            self.viewer.set_texture(key, role, load_rgba(path))
+            self._load_texture_async(key, role, path)
             self.statusBar().showMessage(
-                f"Loaded {key} {role}: {os.path.basename(path)}", 5000
+                f"Loading {key} {role}: {os.path.basename(path)}", 5000
             )
             return path
         except Exception as e:
@@ -1323,7 +1392,7 @@ class MainWindow(QMainWindow):
             ep, real = resolve(part, "coat", missing_coat)
             if real:
                 try:
-                    self.viewer.set_texture(part, "pattern", load_rgba(real))
+                    self._load_texture_async(part, "pattern", real)
                     panels[part].set_texture_path("pattern", real)
                     self._coat_engine[part] = ep  # remember the engine path
                     applied.append(f"{part} coat")
