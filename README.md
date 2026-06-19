@@ -17,30 +17,36 @@ A desktop recolour editor and live OpenGL preview for **Avatar: Frontiers of Pan
 
 ---
 
-## Requirements
+## Installation
+
+### Windows (recommended)
+
+Prebuilt Windows builds are on the **[Releases](https://github.com/SaintBaron/AFOP_BansheeBrush/releases)** tab — no Python or dependencies required.
+
+1. Open the [Releases](https://github.com/SaintBaron/AFOP_BansheeBrush/releases) tab and download the latest release's ZIP.
+2. Extract it anywhere (your Desktop, a tools folder, etc.).
+3. Run **`BansheeBrush.exe`** from the extracted folder.
+
+The build is unsigned, so Windows SmartScreen or your antivirus may warn on first launch — choose **More info → Run anyway** (or allow it) to start.
+
+### Linux (from source)
+
+Run it directly with Python.
 
 - Python 3.10 or newer
-- [PyQt6](https://pypi.org/project/PyQt6/)
-- [moderngl](https://pypi.org/project/moderngl/)
-- [numpy](https://pypi.org/project/numpy/)
-- [Pillow](https://pypi.org/project/Pillow/) (≥ 10.4, for BCn texture decoding)
-- [texture2ddecoder](https://pypi.org/project/texture2ddecoder/) — *optional*, used as a fallback BCn decoder if Pillow can't handle a surface
+- [PyQt6](https://pypi.org/project/PyQt6/), [moderngl](https://pypi.org/project/moderngl/), [numpy](https://pypi.org/project/numpy/), [Pillow](https://pypi.org/project/Pillow/) (≥ 10.4, for BCn texture decoding)
+- [texture2ddecoder](https://pypi.org/project/texture2ddecoder/) — *optional* fallback BCn decoder, used if Pillow can't handle a surface
 
 ```bash
 pip install pyqt6 moderngl numpy pillow texture2ddecoder
-```
-
-A working OpenGL 3.3 driver is required for the viewport (any modern GPU).
-
----
-
-## Running
-
-```bash
 python app.py
 ```
 
-On first run you'll be asked to point the tool at your extracted game files (see below). After that it autoloads them on every launch.
+(Windows users can also run from source this way if they'd rather not use the prebuilt `.exe`.)
+
+### Both platforms
+
+A working **OpenGL 3.3** GPU and driver is required for the 3D viewport (any modern GPU). On first run you'll be asked to point the tool at your extracted game files (see below); after that it autoloads them on every launch.
 
 ---
 
@@ -115,6 +121,8 @@ You can also **Export as Texture** to bake a recoloured albedo to PNG.
 ---
 
 ## Building a Windows `.exe`
+
+Most people should just grab the prebuilt `.exe` from the [Releases](https://github.com/SaintBaron/AFOP_BansheeBrush/releases) tab — this section is only for building it yourself.
 
 Use [PyInstaller](https://pyinstaller.org/) **on Windows** — it can't cross-compile, so building on Linux yields a Linux binary, not an `.exe`.
 
